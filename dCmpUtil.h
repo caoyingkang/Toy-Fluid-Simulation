@@ -6,8 +6,8 @@
 
 const double EPS = 1e-8;
 
-bool isZero(double a){
-    return -EPS<a && a<EPS;
+bool isZero(double a) {
+    return -EPS < a && a < EPS;
 }
 
 #define PROJ_DCMPUTIL_H

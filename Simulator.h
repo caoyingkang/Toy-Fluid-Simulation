@@ -14,6 +14,8 @@
 const int C_BLUE = 1;
 const int C_RED = 2;
 
+using VecMatXd = std::vector<Eigen::MatrixXd>;
+
 class Simulator {
 public:
     Simulator(double _dx, double _dt,
@@ -25,13 +27,13 @@ public:
               F(2, Eigen::MatrixXd(N[0], N[1])),
               C0(Eigen::MatrixXi::Zero(N[0], N[1])),
               C1(Eigen::MatrixXi::Zero(N[0], N[1])),
-              Entrance(N[0], N[1]){
+              Entrance(N[0], N[1]) {
         assert(ln.size() == 2);
     }
 
     ~Simulator() = default;
 
-    void setForce(const std::vector<Eigen::MatrixXd> &newF) {
+    void setForce(const VecMatXd &newF) {
         assert(newF.size() == 2 && newF[0].size() == F[0].size());
         F[0] = newF[0];
         F[1] = newF[1];
@@ -46,10 +48,10 @@ private:
     double dx, dt;
     std::vector<int> N; // N[i]: No. of grids in i-th dimension
     double visc;
-    std::vector<Eigen::MatrixXd> U0, U1; // velocity of girds
+    VecMatXd U0, U1; // velocity of girds
     Eigen::MatrixXi C0, C1; // color of grids
-    Eigen::Matrix<bool,Eigen::Dynamic,Eigen::Dynamic> Entrance;
-    std::vector<Eigen::MatrixXd> F; // force
+    Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> Entrance;
+    VecMatXd F; // force
 
     void Vstep();
 
@@ -58,13 +60,13 @@ private:
     void addForce(Eigen::MatrixXd &m,
                   const Eigen::MatrixXd &f);
 
-    void advect(std::vector<Eigen::MatrixXd> &vecm1,
-                const std::vector<Eigen::MatrixXd> &vecm0,
-                const std::vector<Eigen::MatrixXd> &u);
+    void advect(VecMatXd &vecm1,
+                const VecMatXd &vecm0,
+                const VecMatXd &u);
 
     void advect(Eigen::MatrixXd &m1,
                 const Eigen::MatrixXd &m0,
-                const std::vector<Eigen::MatrixXd> &u);
+                const VecMatXd &u);
 
     void diffuse(Eigen::MatrixXd &m1,
                  const Eigen::MatrixXd &m0,
@@ -72,7 +74,7 @@ private:
 
     void project();
 
-    void TraceParticle(const std::vector<Eigen::MatrixXd> &u,
+    void TraceParticle(const VecMatXd &u,
                        int curr_i, int curr_j,
                        int &pre_i, int &pre_j,
                        double &frac_x, double &frac_y);
@@ -82,8 +84,8 @@ private:
                      double frac, bool Along_X);
 
     double biLinInterp(const Eigen::MatrixXd &m,
-                       int i,int j,
-                        double frac_x, double frac_y);
+                       int i, int j,
+                       double frac_x, double frac_y);
 };
 
 #endif //PROJ_SIMULATOR_H
