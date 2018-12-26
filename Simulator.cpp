@@ -8,20 +8,43 @@
 #include <cmath>
 #include <utility>
 #include <fstream>
+#include <algorithm>
 
 using namespace Eigen;
 using namespace std;
 
-using Trid = Eigen::Triplet<double>;
+using Trid = Eigen::Triplet<float>;
+
+
+void cgSolve(VectorXf &x, const SparseMatrix<float> &A, const VectorXf &b) {
+    x.setZero();
+    float TOL = 1e-6f;
+    int n = A.rows();
+    VectorXf r = b;
+    VectorXf p = r;
+    int k = 0;
+    while (k < n) {
+        float tmp = r.dot(r);
+        VectorXf Ap = A * p;
+        float alpha = tmp / max(p.dot(Ap), 1e-6f);
+        x += alpha * p;
+        r -= alpha * Ap;
+        if (r.norm() < TOL)
+            break;
+        float beta = r.dot(r) / max(tmp, 1e-6f);
+        p = r + beta * p;
+        ++k;
+    }
+}
 
 void Simulator::setInlet(int radius_blue,
                          initializer_list<int> center_blue,
-                         initializer_list<double> v_blue,
+                         initializer_list<float> v_blue,
                          int radius_red,
                          initializer_list<int> center_red,
-                         initializer_list<double> v_red) {
-    v_in1 = vector<double>(v_blue);
-    v_in2 = vector<double>(v_red);
+                         initializer_list<float> v_red) {
+    v_in1 = vector<float>(v_blue);
+    v_in2 = vector<float>(v_red);
     vector<int> c1 = center_blue, c2 = center_red;
     if ((c1[0] - c2[0]) * (c1[0] - c2[0]) +
         (c1[1] - c2[1]) * (c1[1] - c2[1]) <=
@@ -43,6 +66,7 @@ void Simulator::setInlet(int radius_blue,
                        (j - c1[1]) * (j - c1[1]) + 1e-6));
         for (i = c1[0] - tmp; i <= c1[0] + tmp; ++i) {
             inlet(i, j) = C_BLUE;
+            Blue0(i, j) = 1;
         }
     }
     for (j = c2[1] - radius_red; j <= c2[1] + radius_red; ++j) {
@@ -50,6 +74,7 @@ void Simulator::setInlet(int radius_blue,
                        (j - c2[1]) * (j - c2[1]) + 1e-6));
         for (i = c2[0] - tmp; i <= c2[0] + tmp; ++i) {
             inlet(i, j) = C_RED;
+            Red0(i, j) = 1;
         }
     }
 }
@@ -60,10 +85,10 @@ void Simulator::setDefaultInLet() {
         return;
     }
     v_in1.resize(2);
-    v_in1[0] = v_in1[1] = 3 * dx / dt;
+    v_in1[0] = v_in1[1] = 10 * dx / dt;
     v_in2.resize(2);
-    v_in2[0] = -v_in1[0];
-    v_in2[1] = v_in1[1];
+    v_in2[0] = v_in1[0];
+    v_in2[1] = +v_in1[1];
     int r = N[0] / 70;
     int cx = N[0] / 6, cy = N[1] / 3;
     int i, j, tmp;
@@ -71,6 +96,7 @@ void Simulator::setDefaultInLet() {
         tmp = int(sqrt(r * r - (j - cy) * (j - cy) + 1e-6));
         for (i = cx - tmp; i <= cx + tmp; ++i) {
             inlet(i, j) = C_BLUE;
+            Blue0(i, j) = 1;
         }
     }
     cy = 2 * N[1] / 3;
@@ -78,13 +104,14 @@ void Simulator::setDefaultInLet() {
         tmp = int(sqrt(r * r - (j - cy) + 1e-6));
         for (i = cx - tmp; i <= cx + tmp; ++i) {
             inlet(i, j) = C_RED;
+            Red0(i, j) = 1;
         }
     }
     use_default_inlet = true;
 }
 
 
-void Simulator::setForce(const VecMatXd &f) {
+void Simulator::setForce(const VecMatXf &f) {
     assert(N[0] == f[0].rows() &&
            N[1] == f[0].cols() &&
            N[0] == f[1].rows() &&
@@ -94,9 +121,9 @@ void Simulator::setForce(const VecMatXd &f) {
     force_setted = true;
 }
 
-void Simulator::setForce(double fx, double fy) {
-    F[0] = Eigen::MatrixXd::Constant(N[0], N[1], fx);
-    F[1] = Eigen::MatrixXd::Constant(N[0], N[1], fy);
+void Simulator::setForce(float fx, float fy) {
+    F[0] = Eigen::MatrixXf::Constant(N[0], N[1], fx);
+    F[1] = Eigen::MatrixXf::Constant(N[0], N[1], fy);
     force_setted = true;
 }
 
@@ -118,11 +145,11 @@ void Simulator::Vstep() {
         for (int i = 0; i < 2; ++i)
             diffuse(U1[i], visc);
     }
-    cout << "before project, vx=\n" << U1[0] << endl;
+    // cout << "before project, vx=\n" << U1[0] << endl;
     // newest value is stored in X1
     project(U0, U1);
     // newest value is stored in X0
-    cout << "after project, vx=\n" << U0[0] << endl;
+    // cout << "after project, vx=\n" << U0[0] << endl;
 }
 
 void Simulator::Sstep() {
@@ -140,17 +167,17 @@ void Simulator::Sstep() {
     // newest value is stored in X0
 }
 
-void Simulator::addForce(MatrixXd &m,
-                         const MatrixXd &f) {
+void Simulator::addForce(MatrixXf &m,
+                         const MatrixXf &f) {
     m += dt * f;
 }
 
-void Simulator::advect(VecMatXd &vecm1,
-                       const VecMatXd &vecm0,
-                       const VecMatXd &u) {
+void Simulator::advect(VecMatXf &vecm1,
+                       const VecMatXf &vecm0,
+                       const VecMatXf &u) {
     int curr_i, curr_j;
     int pre_i, pre_j;
-    double frac_x, frac_y;
+    float frac_x, frac_y;
     for (curr_j = 0; curr_j < N[1]; ++curr_j) {
         for (curr_i = 0; curr_i < N[0]; ++curr_i) {
             if (inlet(curr_i, curr_j) == 1) {
@@ -186,14 +213,14 @@ void Simulator::advect(VecMatXd &vecm1,
     }
 }
 
-void Simulator::advect(MatrixXd &m1,
-                       const MatrixXd &m0,
-                       const VecMatXd &u,
+void Simulator::advect(MatrixXf &m1,
+                       const MatrixXf &m0,
+                       const VecMatXf &u,
                        int color) {
     // if not advecting color, set color=0
     int curr_i, curr_j;
     int pre_i, pre_j;
-    double frac_x, frac_y;
+    float frac_x, frac_y;
     for (curr_j = 0; curr_j < N[1]; ++curr_j) {
         for (curr_i = 0; curr_i < N[0]; ++curr_i) {
             if (color != 0 && inlet(curr_i, curr_j) == color) {
@@ -214,12 +241,12 @@ void Simulator::advect(MatrixXd &m1,
     }
 }
 
-void Simulator::TraceParticle(const VecMatXd &u,
+void Simulator::TraceParticle(const VecMatXf &u,
                               int curr_i, int curr_j,
                               int &pre_i, int &pre_j,
-                              double &frac_x, double &frac_y) {
-    double Di = -dt * u[0](curr_i, curr_j) / dx;
-    double Dj = -dt * u[1](curr_i, curr_j) / dx;
+                              float &frac_x, float &frac_y) {
+    float Di = -dt * u[0](curr_i, curr_j) / dx;
+    float Dj = -dt * u[1](curr_i, curr_j) / dx;
     int ni, nj;
     if (isZero(Di)) { // zero x-velocity at this point
         pre_i = curr_i;
@@ -254,9 +281,9 @@ void Simulator::TraceParticle(const VecMatXd &u,
 }
 
 
-double Simulator::LinInterp(const MatrixXd &m,
-                            int i, int j,
-                            double frac, bool Along_X) {
+float Simulator::LinInterp(const MatrixXf &m,
+                           int i, int j,
+                           float frac, bool Along_X) {
     assert(Along_X ? (i < N[0] - 1) : (j < N[1] - 1));
     if (Along_X) {
         return (1 - frac) * m(i, j) + frac * m(i + 1, j);
@@ -265,28 +292,28 @@ double Simulator::LinInterp(const MatrixXd &m,
     }
 }
 
-double Simulator::biLinInterp(const MatrixXd &m,
-                              int i, int j,
-                              double frac_x, double frac_y) {
+float Simulator::biLinInterp(const MatrixXf &m,
+                             int i, int j,
+                             float frac_x, float frac_y) {
     // bi-linear interpolation between grid points (i,j), (i+1,j), (i,j+1), (i+1,j+1)
     // the point to be estimated is (i+frac_x,j+frac_y)
     assert((i < N[0] - 1) && (j < N[1] - 1));
-    double tmp1 = (1 - frac_x) * m(i, j) + frac_x * m(i + 1, j);
-    double tmp2 = (1 - frac_x) * m(i, j + 1) + frac_x * m(i + 1, j + 1);
+    float tmp1 = (1 - frac_x) * m(i, j) + frac_x * m(i + 1, j);
+    float tmp2 = (1 - frac_x) * m(i, j + 1) + frac_x * m(i + 1, j + 1);
     return (1 - frac_y) * tmp1 + frac_y * tmp2;
 }
 
-void Simulator::diffuse(MatrixXd &m,
-                        double k) {
+void Simulator::diffuse(MatrixXf &m,
+                        float k) {
     int nx = N[0] - 2, ny = N[1] - 2;
     int sz = nx * ny;
-    double alpha = -dt * k / (dx * dx);
-    double beta = 1 - 4 * alpha;
+    float alpha = -dt * k / (dx * dx);
+    float beta = 1 - 4 * alpha;
     // ****************
     // build A, b
     // ****************
-    SparseMatrix<double> A(sz, sz);
-    VectorXd x(sz), b(sz);
+    SparseMatrix<float> A(sz, sz);
+    VectorXf x(sz), b(sz);
     b.setZero();
     vector<Trid> coeffs;
     int i, j;
@@ -319,7 +346,9 @@ void Simulator::diffuse(MatrixXd &m,
     // solve
     // ****************
     // todo: analyzePattern and factorize
-    ConjugateGradient<SparseMatrix<double>, Lower | Upper, IncompleteLUT<double>> cg;
+    ConjugateGradient<SparseMatrix<float>, Lower | Upper,
+            IncompleteCholesky<float>> cg;
+    std::cout << "#iterations:     " << cg.iterations() << std::endl;
     // cg.setMaxIterations(maxIt);
     // cg.setTolerance(tol);
     cg.compute(A);
@@ -332,50 +361,137 @@ void Simulator::diffuse(MatrixXd &m,
         cerr << "solving failed!" << endl;
         return;
     }
-    m.block(1, 1, nx, ny) = Map<MatrixXd>(x.data(), nx, ny);
+    m.block(1, 1, nx, ny) = Map<MatrixXf>(x.data(), nx, ny);
 }
 
-void Simulator::project(VecMatXd &u1, const VecMatXd &u0) {
-    MatrixXd div(N[0], N[1]);
+//void Simulator::project(VecMatXf &u1, const VecMatXf &u0) {
+//    MatrixXf div(N[0], N[1]);
+//    calcDiv(div, u0);
+//    // ****************
+//    // first step: solve for q: div(grad(q))=div(u0)
+//    // here we solve for q/dx instead
+//    // here MatrixXf div is actually dx*div(u0)
+//    // ****************
+//    // build A, b
+//    // ****************
+//    int sz = N[0] * N[1];
+//    SparseMatrix<float> A(sz, sz);
+//    VectorXf b = Map<VectorXf>(div.data(), sz);
+//    b(0) = 0;
+//    VectorXf x(sz);
+//    vector <Trid> coeffs;
+//    int i, j;
+//    int idx = 0; // idx = i + j * N[1]
+//    for (j = 0; j < N[1]; ++j) {
+//        for (i = 0; i < N[0]; ++i) {
+//            if (i == 0 && j == 0) {
+//                coeffs.emplace_back(idx, idx, 1);
+//            } else {
+//                coeffs.emplace_back(Trid(idx, idx, -4));
+//                if (i == 0) {
+//                    coeffs.emplace_back(Trid(idx, idx + 1, 1));
+//                } else {
+//                    coeffs.emplace_back(Trid(idx, idx - 1, 1));
+//                }
+//                if (i == N[0] - 1) {
+//                    coeffs.emplace_back(Trid(idx, idx - 1, 1));
+//                } else {
+//                    coeffs.emplace_back(Trid(idx, idx + 1, 1));
+//                }
+//                if (j == 0) {
+//                    coeffs.emplace_back(Trid(idx, idx + N[1], 1));
+//                } else {
+//                    coeffs.emplace_back(Trid(idx, idx - N[1], 1));
+//                }
+//                if (j == N[1] - 1) {
+//                    coeffs.emplace_back(Trid(idx, idx - N[1], 1));
+//                } else {
+//                    coeffs.emplace_back(Trid(idx, idx + N[1], 1));
+//                }
+//            }
+//            ++idx;
+//        }
+//    }
+//    A.setFromTriplets(coeffs.begin(), coeffs.end());
+//    // ****************
+//    // solve
+//    // ****************
+//    // todo: analyzePattern and factorize
+//    // ConjugateGradient<SparseMatrix<float >> cg;
+//    SparseLU <SparseMatrix<float>> cg;
+//    cg.compute(A);
+//    if (cg.info() != Success) {
+//        cerr << "decomposition in \"project\" failed!" << endl;
+//        return;
+//    }
+//    x = cg.solve(b);
+//    if (cg.info() != Success) {
+//        cerr << "solving in \"project\" failed!" << endl;
+//        return;
+//    }
+//    div = Map<MatrixXf>(x.data(), N[0], N[1]);
+//    // ****************
+//    // from now, MatrixXf div stores the value for q/dx
+//    // final step: obtain divergence-free u1
+//    // ****************
+//    for (j = 0; j < N[1]; ++j) {
+//        for (i = 0; i < N[0]; ++i) {
+//            if (i == 0 || i == N[0] - 1) {
+//                u1[0](i, j) = 0;
+//            } else {
+//                u1[0](i, j) = u0[0](i, j) - 0.5 * (div(i + 1, j) - div(i - 1, j));
+//            }
+//            if (j == 0 || j == N[1] - 1) {
+//                u1[1](i, j) = 0;
+//            } else {
+//                u1[1](i, j) = u0[1](i, j) - 0.5 * (div(i, j + 1) - div(i, j - 1));
+//            }
+//        }
+//    }
+//}
+
+
+void Simulator::project(VecMatXf &u1, const VecMatXf &u0) {
+    MatrixXf div(N[0], N[1]);
     calcDiv(div, u0);
     // ****************
     // first step: solve for q: div(grad(q))=div(u0)
     // here we solve for q/dx instead
-    // here MatrixXd div is actually dx*div(u0)
+    // here MatrixXf div is actually dx*div(u0)
     // ****************
     // build A, b
     // ****************
     int sz = N[0] * N[1];
-    SparseMatrix<double> A(sz, sz);
-    VectorXd b = Map<VectorXd>(div.data(), sz);
-    b(0) = 0;
-    VectorXd x(sz);
+    SparseMatrix<float> A(sz, sz);
+    VectorXf b = Map<VectorXf>(div.data(), sz);
+    VectorXf x(sz);
     vector<Trid> coeffs;
     int i, j;
     int idx = 0; // idx = i + j * N[1]
     for (j = 0; j < N[1]; ++j) {
         for (i = 0; i < N[0]; ++i) {
-            if (i == 0 && j == 0) {
-                coeffs.emplace_back(idx, idx, 1);
+            if (isZero(Blue0(i, j)) && isZero(Red0(i, j))) {
+                coeffs.emplace_back(Trid(idx, idx, 1));
+                b(idx) = 0;
             } else {
                 coeffs.emplace_back(Trid(idx, idx, -4));
                 if (i == 0) {
-                    coeffs.emplace_back(Trid(idx, idx + 1, 1));
+                    coeffs.emplace_back(Trid(idx, idx, 1));
                 } else {
                     coeffs.emplace_back(Trid(idx, idx - 1, 1));
                 }
                 if (i == N[0] - 1) {
-                    coeffs.emplace_back(Trid(idx, idx - 1, 1));
+                    coeffs.emplace_back(Trid(idx, idx, 1));
                 } else {
                     coeffs.emplace_back(Trid(idx, idx + 1, 1));
                 }
                 if (j == 0) {
-                    coeffs.emplace_back(Trid(idx, idx + N[1], 1));
+                    coeffs.emplace_back(Trid(idx, idx, 1));
                 } else {
                     coeffs.emplace_back(Trid(idx, idx - N[1], 1));
                 }
                 if (j == N[1] - 1) {
-                    coeffs.emplace_back(Trid(idx, idx - N[1], 1));
+                    coeffs.emplace_back(Trid(idx, idx, 1));
                 } else {
                     coeffs.emplace_back(Trid(idx, idx + N[1], 1));
                 }
@@ -388,20 +504,22 @@ void Simulator::project(VecMatXd &u1, const VecMatXd &u0) {
     // solve
     // ****************
     // todo: analyzePattern and factorize
-    ConjugateGradient<SparseMatrix<double >> cg;
+    ConjugateGradient<SparseMatrix<float >> cg;
     cg.compute(A);
     if (cg.info() != Success) {
         cerr << "decomposition in \"project\" failed!" << endl;
         return;
     }
+    cg.setMaxIterations(200);
     x = cg.solve(b);
+    cout << "# cg iterations:     " << cg.iterations() << endl;
     if (cg.info() != Success) {
         cerr << "solving in \"project\" failed!" << endl;
         return;
     }
-    div = Map<MatrixXd>(x.data(), N[0], N[1]);
+    div = Map<MatrixXf>(x.data(), N[0], N[1]);
     // ****************
-    // from now, MatrixXd div stores the value for q/dx
+    // from now, MatrixXf div stores the value for q/dx
     // final step: obtain divergence-free u1
     // ****************
     for (j = 0; j < N[1]; ++j) {
@@ -421,7 +539,7 @@ void Simulator::project(VecMatXd &u1, const VecMatXd &u0) {
 }
 
 
-void Simulator::calcDiv(MatrixXd &m, const VecMatXd &u) {
+void Simulator::calcDiv(MatrixXf &m, const VecMatXf &u) {
     // store result in m:
     // m = dx * div(u)
     assert(m.rows() == N[0] && m.cols() == N[1]);
@@ -447,6 +565,33 @@ void Simulator::calcDiv(MatrixXd &m, const VecMatXd &u) {
     }
 }
 
+void Simulator::getRenderData(float *vertices) {
+    int i, j;
+    int idx = 2; // index of vertices
+    for (j = 0; j < N[1] - 1; ++j) {
+        for (i = 0; i < N[0] - 1; ++i) {
+            vertices[idx] = Red0(i, j);
+            vertices[idx + 1] = Blue0(i, j);
+            idx += 4;
+            vertices[idx] = Red0(i + 1, j);
+            vertices[idx + 1] = Blue0(i + 1, j);
+            idx += 4;
+            vertices[idx] = Red0(i, j + 1);
+            vertices[idx + 1] = Blue0(i, j + 1);
+            idx += 4;
+            vertices[idx] = Red0(i + 1, j);
+            vertices[idx + 1] = Blue0(i + 1, j);
+            idx += 4;
+            vertices[idx] = Red0(i, j + 1);
+            vertices[idx + 1] = Blue0(i, j + 1);
+            idx += 4;
+            vertices[idx] = Red0(i + 1, j + 1);
+            vertices[idx + 1] = Blue0(i + 1, j + 1);
+            idx += 4;
+        }
+    }
+}
+
 void Simulator::printBlue() {
     cout << "blue=\n" << Blue0 << endl;
 }
@@ -462,3 +607,4 @@ void Simulator::printVx() {
 void Simulator::printVy() {
     cout << "vy=\n" << U0[1] << endl;
 }
+

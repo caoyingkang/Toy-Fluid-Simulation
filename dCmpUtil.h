@@ -3,13 +3,13 @@
 //
 
 #ifndef PROJ_DCMPUTIL_H
+#define PROJ_DCMPUTIL_H
 
-const double EPS = 1e-8;
+const float EPS = 1e-6;
 
-bool isZero(double a) {
+bool isZero(float a) {
     return -EPS < a && a < EPS;
 }
 
-#define PROJ_DCMPUTIL_H
 
 #endif //PROJ_DCMPUTIL_H
