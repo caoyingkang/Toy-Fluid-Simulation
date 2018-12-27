@@ -53,6 +53,8 @@ public:
 
     void Forward(); // perform one step
 
+    bool isEmpty(int i, int j) const;
+
     void printBlue();
 
     void printRed();

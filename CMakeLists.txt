@@ -18,6 +18,7 @@ add_executable(proj
         dCmpUtil.h
         Simulator.h Simulator.cpp
         Shader.h Shader.cpp
+        cgUtil.h cgUtil.cpp
         ${GLADCPATH})
 
 target_link_libraries(proj

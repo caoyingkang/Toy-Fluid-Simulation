@@ -7,6 +7,7 @@
 #include "Shader.h"
 #include <iostream>
 #include <iomanip>
+#include <ctime>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
@@ -47,7 +48,7 @@ int main() {
 
     // set force
     // default: no force
-    // smlt.setForce(0,10);
+    smlt.setForce(0, 0);
     // smlt.setForce(some VecMatXd);
 
     // set inlet
@@ -56,8 +57,8 @@ int main() {
     //               radius_red, {center_red}, {v_red})
 //    smlt.setInlet(6, {25, 25}, {10, 10},
 //                  6, {75, 25}, {-10, 10});
-    smlt.setInlet(3, {25, 25}, {1, 1},
-                  3, {25, 75}, {1.1, -1.1});
+    smlt.setInlet(3, {25, 25}, {1.2, 1.2},
+                  3, {25, 75}, {1.3, -1.4});
 
     // glfw: initialize and configure
     // ------------------------------
@@ -120,6 +121,7 @@ int main() {
     // -----------
     int MaxIter = 300;
     int iter = 0;
+
     while (!glfwWindowShouldClose(window)) {
         // input
         // -----
@@ -129,29 +131,8 @@ int main() {
         if (iter < MaxIter) {
             smlt.Forward();
             smlt.getRenderData(vertices);
-            //
-            smlt.Forward();
-            //
-            if (iter + 1 == MaxIter) {
-                smlt.printBlue();
-                smlt.printRed();
-                smlt.printVx();
-                smlt.printVy();
-                int idx = 0;
-                cout << "vertices color:" << endl;
-                while (idx < 3 * n_triangles * sz_vertex) {
-                    cout << setw(16) << setprecision(4) << fixed
-                         << vertices[idx] << "\t\t\t"
-                         << vertices[idx + 1] << "\t\t\t"
-                         << vertices[idx + 2] << "\t\t\t"
-                         << vertices[idx + 3] << endl;
-                    idx += 4;
-                }
-            }
-            //
             ++iter;
         }
-
 
         // render
         // ------
@@ -178,6 +159,7 @@ int main() {
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
     glfwTerminate();
+
     return 0;
 }
 

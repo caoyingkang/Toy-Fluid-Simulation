@@ -4,38 +4,19 @@
 
 #include "Simulator.h"
 #include "dCmpUtil.h"
+#include "cgUtil.h"
 #include <iostream>
 #include <cmath>
 #include <utility>
 #include <fstream>
 #include <algorithm>
+#include <ctime>
 
 using namespace Eigen;
 using namespace std;
 
 using Trid = Eigen::Triplet<float>;
 
-
-void cgSolve(VectorXf &x, const SparseMatrix<float> &A, const VectorXf &b) {
-    x.setZero();
-    float TOL = 1e-6f;
-    int n = A.rows();
-    VectorXf r = b;
-    VectorXf p = r;
-    int k = 0;
-    while (k < n) {
-        float tmp = r.dot(r);
-        VectorXf Ap = A * p;
-        float alpha = tmp / max(p.dot(Ap), 1e-6f);
-        x += alpha * p;
-        r -= alpha * Ap;
-        if (r.norm() < TOL)
-            break;
-        float beta = r.dot(r) / max(tmp, 1e-6f);
-        p = r + beta * p;
-        ++k;
-    }
-}
 
 void Simulator::setInlet(int radius_blue,
                          initializer_list<int> center_blue,
@@ -138,18 +119,19 @@ void Simulator::Vstep() {
         for (int i = 0; i < 2; ++i)
             addForce(U0[i], F[i]);
     }
+
     // newest value is stored in X0
     advect(U1, U0, U0);
+
     // newest value is stored in X1
     if (!isZero(visc)) {
         for (int i = 0; i < 2; ++i)
             diffuse(U1[i], visc);
     }
-    // cout << "before project, vx=\n" << U1[0] << endl;
+
     // newest value is stored in X1
     project(U0, U1);
     // newest value is stored in X0
-    // cout << "after project, vx=\n" << U0[0] << endl;
 }
 
 void Simulator::Sstep() {
@@ -201,13 +183,13 @@ void Simulator::advect(VecMatXf &vecm1,
                     vecm1[0](curr_i, curr_j) = biLinInterp(vecm0[0], pre_i, pre_j, frac_x, frac_y);
                     vecm1[1](curr_i, curr_j) = biLinInterp(vecm0[1], pre_i, pre_j, frac_x, frac_y);
                 }
-                // force boundary condition
-                if (curr_i == 0 || curr_i == N[0] - 1) {
-                    vecm1[0](curr_i, curr_j) = 0;
-                }
-                if (curr_j == 0 || curr_j == N[1] - 1) {
-                    vecm1[1](curr_i, curr_j) = 0;
-                }
+//                // force boundary condition
+//                if (curr_i == 0 || curr_i == N[0] - 1) {
+//                    vecm1[0](curr_i, curr_j) = 0;
+//                }
+//                if (curr_j == 0 || curr_j == N[1] - 1) {
+//                    vecm1[1](curr_i, curr_j) = 0;
+//                }
             }
         }
     }
@@ -303,6 +285,69 @@ float Simulator::biLinInterp(const MatrixXf &m,
     return (1 - frac_y) * tmp1 + frac_y * tmp2;
 }
 
+//void Simulator::diffuse(MatrixXf &m,
+//                        float k) {
+//    int nx = N[0] - 2, ny = N[1] - 2;
+//    int sz = nx * ny;
+//    float alpha = -dt * k / (dx * dx);
+//    float beta = 1 - 4 * alpha;
+//    // ****************
+//    // build A, b
+//    // ****************
+//    SparseMatrix<float> A(sz, sz);
+//    VectorXf
+//            x(sz), b(sz);
+//    b.setZero();
+//    vector<Trid> coeffs;
+//    int i, j;
+//    int idx = 0; // idx = (i-1) + (j-1) * nx
+//    for (j = 1; j <= N[1] - 2; ++j) {
+//        for (i = 1; i <= N[0] - 2; ++i) {
+//            coeffs.emplace_back(Trid(idx, idx, beta));
+//            b(idx) += m(i, j);
+//            if (i == 1)
+//                b(idx) -= alpha * m(0, j);
+//            else
+//                coeffs.emplace_back(Trid(idx, idx - 1, alpha));
+//            if (i == N[0] - 2)
+//                b(idx) -= alpha * m(N[0] - 1, j);
+//            else
+//                coeffs.emplace_back(Trid(idx, idx + 1, alpha));
+//            if (j == 1)
+//                b(idx) -= alpha * m(i, 0);
+//            else
+//                coeffs.emplace_back(Trid(idx, idx - nx, alpha));
+//            if (j == N[1] - 2)
+//                b(idx) -= alpha * m(i, N[1] - 1);
+//            else
+//                coeffs.emplace_back(Trid(idx, idx + nx, alpha));
+//            ++idx;
+//        }
+//    }
+//    A.setFromTriplets(coeffs.begin(), coeffs.end());
+//    // ****************
+//    // solve
+//    // ****************
+//    // todo: analyzePattern and factorize
+//    ConjugateGradient<SparseMatrix<float>, Lower | Upper,
+//            IncompleteCholesky<float >> cg;
+//    // cg.setMaxIterations(maxIt);
+//    // cg.setTolerance(tol);
+//    cg.compute(A);
+//    if (cg.info() != Success) {
+//        cerr << "decomposition failed!" << endl;
+//        return;
+//    }
+//    x = cg.solve(b);
+//    if (cg.info() != Success) {
+//        cerr << "solving failed!" << endl;
+//        return;
+//    }
+//    std::cout << "#iterations:     " << cg.iterations() << std::endl;
+//    m.block(1, 1, nx, ny) = Map<MatrixXf>(x.data(), nx, ny);
+//}
+
+
 void Simulator::diffuse(MatrixXf &m,
                         float k) {
     int nx = N[0] - 2, ny = N[1] - 2;
@@ -312,57 +357,42 @@ void Simulator::diffuse(MatrixXf &m,
     // ****************
     // build A, b
     // ****************
-    SparseMatrix<float> A(sz, sz);
+    CG::cgMat A(nx, ny);
     VectorXf x(sz), b(sz);
     b.setZero();
-    vector<Trid> coeffs;
-    int i, j;
-    int idx = 0; // idx = (i-1) + (j-1) * ny
+    int i, j, ai, aj;
+    int idx = 0; // idx = (i-1) + (j-1) * nx
     for (j = 1; j <= N[1] - 2; ++j) {
         for (i = 1; i <= N[0] - 2; ++i) {
-            coeffs.emplace_back(Trid(idx, idx, beta));
+            ai = i - 1;
+            aj = j - 1;
+            A.Adiag(ai, aj) = beta;
             b(idx) += m(i, j);
             if (i == 1)
                 b(idx) -= alpha * m(0, j);
-            else
-                coeffs.emplace_back(Trid(idx, idx - 1, alpha));
             if (i == N[0] - 2)
                 b(idx) -= alpha * m(N[0] - 1, j);
             else
-                coeffs.emplace_back(Trid(idx, idx + 1, alpha));
+                A.Aplusi(ai, aj) = alpha;
             if (j == 1)
                 b(idx) -= alpha * m(i, 0);
-            else
-                coeffs.emplace_back(Trid(idx, idx - ny, alpha));
             if (j == N[1] - 2)
                 b(idx) -= alpha * m(i, N[1] - 1);
             else
-                coeffs.emplace_back(Trid(idx, idx + ny, alpha));
+                A.Aplusj(ai, aj) = alpha;
             ++idx;
         }
     }
-    A.setFromTriplets(coeffs.begin(), coeffs.end());
     // ****************
     // solve
     // ****************
-    // todo: analyzePattern and factorize
-    ConjugateGradient<SparseMatrix<float>, Lower | Upper,
-            IncompleteCholesky<float>> cg;
-    std::cout << "#iterations:     " << cg.iterations() << std::endl;
-    // cg.setMaxIterations(maxIt);
-    // cg.setTolerance(tol);
-    cg.compute(A);
-    if (cg.info() != Success) {
-        cerr << "decomposition failed!" << endl;
-        return;
-    }
-    x = cg.solve(b);
-    if (cg.info() != Success) {
-        cerr << "solving failed!" << endl;
-        return;
-    }
+    int iters;
+    cgSolve(x, A, b, 0.01, 100, CG::MIC, &iters);
+    //cgSolve(x, A, b, 1e-6f, 100, CG::MIC, &iters);
+    cout << "diffuse phase: iters in CG::cgSolve:    " << iters << endl;
     m.block(1, 1, nx, ny) = Map<MatrixXf>(x.data(), nx, ny);
 }
+
 
 //void Simulator::project(VecMatXf &u1, const VecMatXf &u0) {
 //    MatrixXf div(N[0], N[1]);
@@ -381,7 +411,7 @@ void Simulator::diffuse(MatrixXf &m,
 //    VectorXf x(sz);
 //    vector <Trid> coeffs;
 //    int i, j;
-//    int idx = 0; // idx = i + j * N[1]
+//    int idx = 0; // idx = i + j * N[0]
 //    for (j = 0; j < N[1]; ++j) {
 //        for (i = 0; i < N[0]; ++i) {
 //            if (i == 0 && j == 0) {
@@ -399,14 +429,98 @@ void Simulator::diffuse(MatrixXf &m,
 //                    coeffs.emplace_back(Trid(idx, idx + 1, 1));
 //                }
 //                if (j == 0) {
-//                    coeffs.emplace_back(Trid(idx, idx + N[1], 1));
+//                    coeffs.emplace_back(Trid(idx, idx + N[0], 1));
 //                } else {
-//                    coeffs.emplace_back(Trid(idx, idx - N[1], 1));
+//                    coeffs.emplace_back(Trid(idx, idx - N[0], 1));
+//                }
+//                if//void Simulator::project(VecMatXf &u1, const VecMatXf &u0) {
+//    MatrixXf div(N[0], N[1]);
+//    calcDiv(div, u0);
+//    // ****************
+//    // first step: solve for q: div(grad(q))=div(u0)
+//    // here we solve for q/dx instead
+//    // here MatrixXf div is actually dx*div(u0)
+//    // ****************
+//    // build A, b
+//    // ****************
+//    int sz = N[0] * N[1];
+//    SparseMatrix<float> A(sz, sz);
+//    VectorXf b = Map<VectorXf>(div.data(), sz);
+//    b(0) = 0;
+//    VectorXf x(sz);
+//    vector <Trid> coeffs;
+//    int i, j;
+//    int idx = 0; // idx = i + j * N[0]
+//    for (j = 0; j < N[1]; ++j) {
+//        for (i = 0; i < N[0]; ++i) {
+//            if (i == 0 && j == 0) {
+//                coeffs.emplace_back(idx, idx, 1);
+//            } else {
+//                coeffs.emplace_back(Trid(idx, idx, -4));
+//                if (i == 0) {
+//                    coeffs.emplace_back(Trid(idx, idx + 1, 1));
+//                } else {
+//                    coeffs.emplace_back(Trid(idx, idx - 1, 1));
+//                }
+//                if (i == N[0] - 1) {
+//                    coeffs.emplace_back(Trid(idx, idx - 1, 1));
+//                } else {
+//                    coeffs.emplace_back(Trid(idx, idx + 1, 1));
+//                }
+//                if (j == 0) {
+//                    coeffs.emplace_back(Trid(idx, idx + N[0], 1));
+//                } else {
+//                    coeffs.emplace_back(Trid(idx, idx - N[0], 1));
 //                }
 //                if (j == N[1] - 1) {
-//                    coeffs.emplace_back(Trid(idx, idx - N[1], 1));
+//                    coeffs.emplace_back(Trid(idx, idx - N[0], 1));
 //                } else {
-//                    coeffs.emplace_back(Trid(idx, idx + N[1], 1));
+//                    coeffs.emplace_back(Trid(idx, idx + N[0], 1));
+//                }
+//            }
+//            ++idx;
+//        }
+//    }
+//    A.setFromTriplets(coeffs.begin(), coeffs.end());
+//    // ****************
+//    // solve
+//    // ****************
+//    // todo: analyzePattern and factorize
+//    // ConjugateGradient<SparseMatrix<float >> cg;
+//    SparseLU <SparseMatrix<float>> cg;
+//    cg.compute(A);
+//    if (cg.info() != Success) {
+//        cerr << "decomposition in \"project\" failed!" << endl;
+//        return;
+//    }
+//    x = cg.solve(b);
+//    if (cg.info() != Success) {
+//        cerr << "solving in \"project\" failed!" << endl;
+//        return;
+//    }
+//    div = Map<MatrixXf>(x.data(), N[0], N[1]);
+//    // ****************
+//    // from now, MatrixXf div stores the value for q/dx
+//    // final step: obtain divergence-free u1
+//    // ****************
+//    for (j = 0; j < N[1]; ++j) {
+//        for (i = 0; i < N[0]; ++i) {
+//            if (i == 0 || i == N[0] - 1) {
+//                u1[0](i, j) = 0;
+//            } else {
+//                u1[0](i, j) = u0[0](i, j) - 0.5 * (div(i + 1, j) - div(i - 1, j));
+//            }
+//            if (j == 0 || j == N[1] - 1) {
+//                u1[1](i, j) = 0;
+//            } else {
+//                u1[1](i, j) = u0[1](i, j) - 0.5 * (div(i, j + 1) - div(i, j - 1));
+//            }
+//        }
+//    }
+//} (j == N[1] - 1) {
+//                    coeffs.emplace_back(Trid(idx, idx - N[0], 1));
+//                } else {
+//                    coeffs.emplace_back(Trid(idx, idx + N[0], 1));
 //                }
 //            }
 //            ++idx;
@@ -451,9 +565,115 @@ void Simulator::diffuse(MatrixXf &m,
 //}
 
 
+//void Simulator::project(VecMatXf &u1, const VecMatXf &u0) {
+//    MatrixXf div(N[0], N[1]);
+//    calcDiv(div, u0);
+//    // ****************
+//    // first step: solve for q: div(grad(q))=div(u0)
+//    // here we solve for q/dx instead
+//    // here MatrixXf div is actually dx*div(u0)
+//    // ****************
+//    // build A, b
+//    // ****************
+//    int sz = N[0] * N[1];
+//    SparseMatrix<float> A(sz, sz);
+//    VectorXf b = Map<VectorXf>(div.data(), sz);
+//    b = -b;
+//    VectorXf x(sz);
+//    vector<Trid> coeffs;
+//    int i, j;
+//    int idx = 0; // idx = i + j * N[0]
+//    for (j = 0; j < N[1]; ++j) {
+//        for (i = 0; i < N[0]; ++i) {
+//            if (isZero(Blue0(i, j)) && isZero(Red0(i, j))) {
+//                coeffs.emplace_back(Trid(idx, idx, 1));
+//                b(idx) = 0;
+//            } else {
+//                coeffs.emplace_back(Trid(idx, idx, 4));
+//                if (i == 0) {
+//                    coeffs.emplace_back(Trid(idx, idx, -1));
+//                } else {
+//                    coeffs.emplace_back(Trid(idx, idx - 1, -1));
+//                }
+//                if (i == N[0] - 1) {
+//                    coeffs.emplace_back(Trid(idx, idx, -1));
+//                } else {
+//                    coeffs.emplace_back(Trid(idx, idx + 1, -1));
+//                }
+//                if (j == 0) {
+//                    coeffs.emplace_back(Trid(idx, idx, -1));
+//                } else {
+//                    coeffs.emplace_back(Trid(idx, idx - N[0], -1));
+//                }
+//                if (j == N[1] - 1) {
+//                    coeffs.emplace_back(Trid(idx, idx, -1));
+//                } else {
+//                    coeffs.emplace_back(Trid(idx, idx + N[0], -1));
+//                }
+//            }
+//            ++idx;
+//        }
+//    }
+//    A.setFromTriplets(coeffs.begin(), coeffs.end());
+//    // ****************
+//    // solve
+//    // ****************
+//
+//    // use eigen conjugate gradient -------------------------------
+////    // todo: analyzePattern and factorize
+////    ConjugateGradient<SparseMatrix<float >> cg;
+////    cg.compute(A);
+////    if (cg.info() != Success) {
+////        cerr << "decomposition in \"project\" failed!" << endl;
+////        return;
+////    }
+////    cg.setMaxIterations(200);
+////    x = cg.solve(b);
+////    cout << "# cg iterations:     " << cg.iterations() << endl;
+////    if (cg.info() != Success) {
+////        cerr << "solving in \"project\" failed!" << endl;
+////        return;
+////    }
+//
+//    // use sparse lu ----------------------
+//    SparseLU<SparseMatrix<float >> lu;
+//    lu.compute(A);
+//    if (lu.info() != Success) {
+//        cerr << "decomposition in \"project\" failed!" << endl;
+//        return;
+//    }
+//    x = lu.solve(b);
+//    if (lu.info() != Success) {
+//        cerr << "solving in \"project\" failed!" << endl;
+//        return;
+//    }
+//
+//    div = Map<MatrixXf>(x.data(), N[0], N[1]);
+//    // ****************
+//    // from now, MatrixXf div stores the value for q/dx
+//    // final step: obtain divergence-free u1
+//    // ****************
+//    for (j = 0; j < N[1]; ++j) {
+//        for (i = 0; i < N[0]; ++i) {
+//            if (i == 0 || i == N[0] - 1) {
+//                u1[0](i, j) = 0;
+//            } else {
+//                u1[0](i, j) = u0[0](i, j) - 0.5 * (div(i + 1, j) - div(i - 1, j));
+//            }
+//            if (j == 0 || j == N[1] - 1) {
+//                u1[1](i, j) = 0;
+//            } else {
+//                u1[1](i, j) = u0[1](i, j) - 0.5 * (div(i, j + 1) - div(i, j - 1));
+//            }
+//        }
+//    }
+//}
+
+
 void Simulator::project(VecMatXf &u1, const VecMatXf &u0) {
     MatrixXf div(N[0], N[1]);
     calcDiv(div, u0);
+
     // ****************
     // first step: solve for q: div(grad(q))=div(u0)
     // here we solve for q/dx instead
@@ -462,62 +682,50 @@ void Simulator::project(VecMatXf &u1, const VecMatXf &u0) {
     // build A, b
     // ****************
     int sz = N[0] * N[1];
-    SparseMatrix<float> A(sz, sz);
-    VectorXf b = Map<VectorXf>(div.data(), sz);
     VectorXf x(sz);
-    vector<Trid> coeffs;
+    VectorXf b = Map<VectorXf>(div.data(), sz);
+    b = -b;
+
+    CG::cgMat A(N[0], N[1]);
     int i, j;
-    int idx = 0; // idx = i + j * N[1]
+    int idx = 0; // idx = i + j * N[0]
     for (j = 0; j < N[1]; ++j) {
         for (i = 0; i < N[0]; ++i) {
-            if (isZero(Blue0(i, j)) && isZero(Red0(i, j))) {
-                coeffs.emplace_back(Trid(idx, idx, 1));
+            if (isEmpty(i, j)) {
+                A.Adiag(i, j) = 1;
                 b(idx) = 0;
             } else {
-                coeffs.emplace_back(Trid(idx, idx, -4));
-                if (i == 0) {
-                    coeffs.emplace_back(Trid(idx, idx, 1));
-                } else {
-                    coeffs.emplace_back(Trid(idx, idx - 1, 1));
+                A.Adiag(i, j) += 4;
+                if (i == 0 || i == N[0] - 1) {
+                    A.Adiag(i, j) += -1;
+                    b(idx) += (i == 0 ? -u0[0](0, j) : u0[0](N[0] - 1, j));
                 }
-                if (i == N[0] - 1) {
-                    coeffs.emplace_back(Trid(idx, idx, 1));
-                } else {
-                    coeffs.emplace_back(Trid(idx, idx + 1, 1));
+                if (i != N[0] - 1 && !isEmpty(i + 1, j)) {
+                    A.Aplusi(i, j) += -1;
                 }
-                if (j == 0) {
-                    coeffs.emplace_back(Trid(idx, idx, 1));
-                } else {
-                    coeffs.emplace_back(Trid(idx, idx - N[1], 1));
+                if (j == 0 || j == N[1] - 1) {
+                    A.Adiag(i, j) += -1;
+                    b(idx) += (j == 0 ? -u0[1](i, 0) : u0[1](i, N[1] - 1));
                 }
-                if (j == N[1] - 1) {
-                    coeffs.emplace_back(Trid(idx, idx, 1));
-                } else {
-                    coeffs.emplace_back(Trid(idx, idx + N[1], 1));
+                if (j != N[1] - 1 && !isEmpty(i, j + 1)) {
+                    A.Aplusj(i, j) += -1;
                 }
             }
             ++idx;
         }
     }
-    A.setFromTriplets(coeffs.begin(), coeffs.end());
+
     // ****************
     // solve
     // ****************
-    // todo: analyzePattern and factorize
-    ConjugateGradient<SparseMatrix<float >> cg;
-    cg.compute(A);
-    if (cg.info() != Success) {
-        cerr << "decomposition in \"project\" failed!" << endl;
-        return;
-    }
-    cg.setMaxIterations(200);
-    x = cg.solve(b);
-    cout << "# cg iterations:     " << cg.iterations() << endl;
-    if (cg.info() != Success) {
-        cerr << "solving in \"project\" failed!" << endl;
-        return;
-    }
+
+    int iters;
+    //cgSolve(x, A, b, 0.1, 100, CG::Identity, &iters);
+    cgSolve(x, A, b, 0.001, 100, CG::MIC, &iters);
+    cout << "project phase: iters in CG::cgSolve:    " << iters << endl;
+
     div = Map<MatrixXf>(x.data(), N[0], N[1]);
+
     // ****************
     // from now, MatrixXf div stores the value for q/dx
     // final step: obtain divergence-free u1
@@ -590,6 +798,10 @@ void Simulator::getRenderData(float *vertices) {
             idx += 4;
         }
     }
+}
+
+bool Simulator::isEmpty(int i, int j) const {
+    return isZero(Blue0(i, j)) && isZero(Red0(i, j));
 }
 
 void Simulator::printBlue() {
