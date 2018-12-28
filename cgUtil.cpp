@@ -3,19 +3,19 @@
 //
 
 #include "cgUtil.h"
+#include "cmpUtil.h"
 #include <cassert>
 #include <iostream>
 #include <cmath>
-#include <ctime>
 
 using namespace std;
 using namespace Eigen;
 using namespace CG;
 
 
-// z = A * x
-void cgMat::multiply(Eigen::VectorXf &z, const Eigen::VectorXf &x) const {
-    assert(z.size() == Nx * Ny);
+// calculate Ax
+void cgMat::multiply(Eigen::VectorXf &Ax, const Eigen::VectorXf &x) const {
+    assert(Ax.size() == Nx * Ny);
     int i, j;
     int idx = 0; // idx = i + j * Nx
     float val;
@@ -26,7 +26,7 @@ void cgMat::multiply(Eigen::VectorXf &z, const Eigen::VectorXf &x) const {
             if (i < Nx - 1) val += Aplusi(i, j) * x(idx + 1);
             if (j > 0) val += Aplusj(i, j - 1) * x(idx - Nx);
             if (j < Ny - 1) val += Aplusj(i, j) * x(idx + Nx);
-            z(idx) = val;
+            Ax(idx) = val;
             ++idx;
         }
     }
@@ -54,7 +54,7 @@ void cgMat::MIC_factorize() {
                 if (i < Nx - 1)
                     e -= tau * tmp * Aplusi(i, j - 1) * precon(i, j - 1);
             }
-            if (e < -1e-30) {
+            if (Less(e, 0)) {
                 cerr << "ERROR::CG::MIC_factorize::sqrt_negative   perhaps this is not a PSD matrix?" << endl;
             }
             precon(i, j) = 1 / sqrt(e + 1e-30);
@@ -69,14 +69,14 @@ void cgMat::ApplyPrecond(VectorXf &z,
     if (type == Identity) {
         z = x;
     } else if (type == MIC) {
-        assert(x.size() == Nx * Ny);
-        assert(z.size() == Nx * Ny);
+        assert(x.size() == size());
+        assert(z.size() == size());
         if (!MIC_cond) {
             MIC_factorize();
         }
+        MatrixXf &precon = *MIC_cond;
         // Applying the MIC(0) preconditioner
         // ----------------------------------
-        MatrixXf &precon = *MIC_cond;
         // first solve Ly=x
         int i, j;
         int idx = 0; // idx = i + j * Nx
@@ -132,20 +132,20 @@ void cgSolve(VectorXf &x,
         ++iter;
         A.multiply(aux, s);
         sAs = s.dot(aux);
-        if (sAs < -1e-15f) {
+        if (Less(sAs, 0)) {
             cerr << "ERROR::CG::cgSolve::sAs is negative, perhaps this is not a PSD matrix?" << endl;
         }
-        float alpha = tmp / ((sAs < 1e-15f && sAs > -1e-15f) ? 1e-15f : sAs);
+        float alpha = tmp / (isZero(sAs) ? 1e-15f : sAs);
         x += alpha * s;
         r -= alpha * aux;
         if (r.lpNorm<Infinity>() < TOL)
             break;
         A.ApplyPrecond(aux, r, type);
         tmp_new = r.dot(aux);
-        if (tmp < -1e-15f) {
+        if (Less(tmp, 0)) {
             cerr << "ERROR::CG::cgSolve::rMr is negative, perhaps this is not a PSD matrix?" << endl;
         }
-        float beta = tmp_new / ((tmp < 1e-15f && tmp > -1e-15f) ? 1e-15f : tmp);
+        float beta = tmp_new / (isZero(tmp) ? 1e-15f : tmp);
         s = aux + beta * s;
         tmp = tmp_new;
     }

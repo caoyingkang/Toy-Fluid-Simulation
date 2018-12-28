@@ -14,12 +14,11 @@
 using namespace std;
 
 // settings for simulation
-const float dx = 0.1;
-const float dt = 0.1;
-const int Nx = 100;
+const float dx = 1;
+const float dt = 1;
+const int Nx = 200;
 const int Ny = 100;
-const float visc = 0;
-const float diff = 0;
+const int MaxIter = -1; // no limit
 
 // settings for rendering
 const unsigned int SCR_WIDTH = 800;
@@ -44,21 +43,33 @@ void setPosVertices(float *vertices);
 int main() {
     // initializing simulator
     // ----------------------
-    Simulator smlt(dx, dt, {Nx, Ny}, visc, diff);
+    Simulator smlt(dx, dt, {Nx, Ny});
 
     // set force
+    // -----------------------
     // default: no force
-    smlt.setForce(0, 0);
-    // smlt.setForce(some VecMatXd);
+    // usage1: smlt.setForce(fx, fy); (for each grid)
+    // usage2: smlt.setForce(vecMatXf);
 
     // set inlet
-    // smlt.setDefaultInLet();
-    // smlt.setInlet(radius_blue, {center_blue}, {v_blue},
-    //               radius_red, {center_red}, {v_red})
-//    smlt.setInlet(6, {25, 25}, {10, 10},
-//                  6, {75, 25}, {-10, 10});
-    smlt.setInlet(3, {25, 25}, {1.2, 1.2},
-                  3, {25, 75}, {1.3, -1.4});
+    // -----------------------
+    // usage: smlt.setInlet(radius_blue, {center_blue}, {v_blue},
+    //                      radius_red, {center_red}, {v_red})
+//    smlt.setInlet(2, {33, 66}, {3, 0},
+//                  2, {166, 66}, {-3, 0});
+    smlt.setInlet(3, {33, 33}, {3, 3},
+                  3, {33, 66}, {3, -3});
+
+    // set viscosity
+    // -----------------------
+    // usage: smlt.setVisc(val)
+    //smlt.setVisc(0.07);
+    //smlt.setVisc(0.3);
+
+    // set diffusion coefficient
+    // -----------------------
+    // usage: smlt.setDiff(val)
+    //smlt.setDiff(0.07);
 
     // glfw: initialize and configure
     // ------------------------------
@@ -119,7 +130,7 @@ int main() {
 
     // render loop
     // -----------
-    int MaxIter = 300;
+
     int iter = 0;
 
     while (!glfwWindowShouldClose(window)) {
@@ -128,10 +139,11 @@ int main() {
         processInput(window);
 
         // simulation step
-        if (iter < MaxIter) {
+        if (MaxIter == -1 || iter < MaxIter) {
+            ++iter;
+            cout << "iteration " << iter << endl;
             smlt.Forward();
             smlt.getRenderData(vertices);
-            ++iter;
         }
 
         // render

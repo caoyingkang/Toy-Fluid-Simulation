@@ -9,7 +9,7 @@
 #include <initializer_list>
 #include <vector>
 #include <cassert>
-#include <eigen3/Eigen/Eigen>
+#include <eigen3/Eigen/Dense>
 
 const int C_BLUE = 1;
 const int C_RED = 2;
@@ -19,10 +19,8 @@ using VecMatXf = std::vector<Eigen::MatrixXf>;
 class Simulator {
 public:
     Simulator(float _dx, float _dt,
-              std::initializer_list<int> ln,
-              float _visc, float _diff)
+              std::initializer_list<int> ln)
             : dx(_dx), dt(_dt), N(ln),
-              visc(_visc), diff(_diff),
               U0(2, Eigen::MatrixXf::Zero(N[0], N[1])),
               U1(2, Eigen::MatrixXf::Zero(N[0], N[1])),
               F(2, Eigen::MatrixXf(N[0], N[1])),
@@ -31,8 +29,9 @@ public:
               Red0(Eigen::MatrixXf::Zero(N[0], N[1])),
               Red1(Eigen::MatrixXf::Zero(N[0], N[1])),
               inlet(Eigen::MatrixXi::Zero(N[0], N[1])),
-              use_default_inlet(false),
-              force_setted(false) {
+              force_setted(false),
+              visc_setted(false),
+              diff_setted(false) {
         assert(ln.size() == 2);
     }
 
@@ -42,6 +41,10 @@ public:
 
     void setForce(float fx, float fy);
 
+    void setVisc(float val);
+
+    void setDiff(float val);
+
     void setInlet(int radius_blue,
                   std::initializer_list<int> center_blue,
                   std::initializer_list<float> v_blue,
@@ -49,12 +52,14 @@ public:
                   std::initializer_list<int> center_red,
                   std::initializer_list<float> v_red);
 
-    void setDefaultInLet();
 
     void Forward(); // perform one step
 
     bool isEmpty(int i, int j) const;
 
+    void getRenderData(float *vertices);
+
+    // printXXX: for debug usage
     void printBlue();
 
     void printRed();
@@ -63,7 +68,6 @@ public:
 
     void printVy();
 
-    void getRenderData(float *vertices);
 
 private:
     float dx, dt;
@@ -89,8 +93,9 @@ private:
     VecMatXf F; // force
 
     // private indicators
-    bool use_default_inlet;
     bool force_setted;
+    bool visc_setted;
+    bool diff_setted;
 
     // private methods
     void Vstep();

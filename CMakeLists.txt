@@ -1,29 +1,32 @@
 cmake_minimum_required(VERSION 3.0)
-project(proj)
+project(ToyFluidSimProj)
 
 set(CMAKE_CXX_STANDARD 11)
-set(GLADCPATH /home/cyk/openglDeps/glad/src/glad.c)
 
-FIND_PACKAGE(OpenMP REQUIRED)
-if (OPENMP_FOUND)
-    message("OPENMP FOUND")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+if (CMAKE_COMPILER_IS_GNUCXX)
+    set(CMAKE_CXX_FLAGS "-O2")        ## Optimize
+    set(CMAKE_EXE_LINKER_FLAGS "-s")  ## Strip binary
 endif ()
 
+set(GLADCPATH /home/cyk/openglDeps/glad/src/glad.c)
 
-add_executable(proj
+configure_file(shader.vs . COPYONLY)
+configure_file(shader.fs . COPYONLY)
+
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+
+add_executable(ToyFluidSimProj
         main.cpp
-        dCmpUtil.h
+        cmpUtil.h
         Simulator.h Simulator.cpp
         Shader.h Shader.cpp
         cgUtil.h cgUtil.cpp
         ${GLADCPATH})
 
-target_link_libraries(proj
+target_link_libraries(ToyFluidSimProj
         GLEW glfw3 dl GL X11
         pthread Xrandr Xxf86vm
-        Xinerama Xcursor Xi)
+        Xinerama Xcursor Xi
+        Eigen3::Eigen)
 
-add_executable(test main2.cpp)
+
