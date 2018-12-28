@@ -8,7 +8,7 @@ if (CMAKE_COMPILER_IS_GNUCXX)
     set(CMAKE_EXE_LINKER_FLAGS "-s")  ## Strip binary
 endif ()
 
-set(GLADCPATH /home/cyk/openglDeps/glad/src/glad.c)
+set(GLADCPATH PATH_TO_FILE_glad.c)
 
 configure_file(shader.vs . COPYONLY)
 configure_file(shader.fs . COPYONLY)
