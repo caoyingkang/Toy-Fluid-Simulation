@@ -1,7 +1,7 @@
 # Toy-Fluid-Simulation
 A simple fluid simulator using physics-based method guided by these two tutorials: http://www.dgp.toronto.edu/people/stam/reality/Research/pdf/ns.pdf and https://www.cs.ubc.ca/~rbridson/fluidsimulation/fluids_notes.pdf.
 
-- Dependents:
+- Dependencies:
 	- C++11
 
 	- OpenGL core profile version 3.3 (with [glfw](https://www.glfw.org/download.html), [glad](https://glad.dav1d.de/) downloaded)
