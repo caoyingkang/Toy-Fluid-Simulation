@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 11)
 if (CMAKE_COMPILER_IS_GNUCXX)
     set(CMAKE_CXX_FLAGS "-O2")        ## Optimize
     set(CMAKE_EXE_LINKER_FLAGS "-s")  ## Strip binary
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 endif ()
 
 set(GLADCPATH PATH_TO_FILE_glad.c)
